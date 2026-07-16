@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Precio del cobre — Chile comex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root{
+    --navy-deep:#0F1E3C;
+    --navy-mid:#1C3A63;
+    --navy-soft:#3E5C86;
+    --copper:#C1743A;
+    --copper-soft:#E3B98C;
+    --cream:#F7F4EE;
+    --card:#FFFFFF;
+    --ink:#181818;
+    --muted:#6B6B63;
+    --line:#E4E0D6;
+    --green:#3B7A3B;
+    --red:#B23B3B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:480px; margin:0 auto; padding:28px 20px 40px;}
+  header{margin-bottom:20px;}
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--copper); font-weight:600; margin:0 0 6px;
+  }
+  h1{font-size:26px; line-height:1.2; margin:0 0 4px; font-weight:600; color:var(--navy-deep);}
+  .subtitle{font-size:14px; color:var(--muted); margin:0;}
+
+  .price-card{
+    background:var(--navy-deep);
+    border-radius:16px;
+    padding:22px 20px;
+    color:#fff;
+    margin:22px 0;
+  }
+  .price-label{font-size:12px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.75; margin:0 0 6px;}
+  .price-value{font-family:'IBM Plex Mono', monospace; font-size:36px; font-weight:600; margin:0; color:var(--copper-soft);}
+  .price-unit{font-size:13px; opacity:0.7; margin:2px 0 12px;}
+  .price-delta{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:'IBM Plex Mono', monospace; font-size:13px; font-weight:600;
+    padding:4px 10px; border-radius:20px; background:rgba(255,255,255,0.1);
+  }
+  .price-delta.up{color:#8FCB8F;}
+  .price-delta.down{color:#E39A9A;}
+  .price-date{font-size:11.5px; opacity:0.6; margin-top:10px;}
+
+  section{margin:26px 0;}
+  h2{font-size:15px; font-weight:600; color:var(--navy-deep); margin:0 0 4px;}
+  .section-note{font-size:12.5px; color:var(--muted); margin:0 0 14px;}
+
+  .chart-box{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px 14px 8px;
+    position:relative;
+    height:220px;
+  }
+
+  .status{
+    display:flex; align-items:center; gap:8px;
+    font-size:13px; color:var(--muted);
+    padding:14px 16px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:12px;
+  }
+  .status.error{color:var(--red); border-color:#E3B3B3; background:#FBEFEF;}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--copper); flex-shrink:0;}
+
+  footer{
+    margin-top:30px; padding-top:16px; border-top:1px solid var(--line);
+    font-size:11.5px; color:var(--muted); line-height:1.6;
+  }
+  footer strong{color:var(--navy-mid);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Comex Chile · Commodities</p>
+    <h1>Precio del cobre</h1>
+    <p class="subtitle">Actualizado automáticamente cada vez que se abre esta página</p>
+  </header>
+
+  <div id="loading" class="status"><span class="dot"></span> Consultando Alpha Vantage…</div>
+
+  <div id="contenido" style="display:none;">
+    <div class="price-card">
+      <p class="price-label">Precio global del cobre</p>
+      <p class="price-value" id="precio-actual">–</p>
+      <p class="price-unit">US$ por tonelada métrica</p>
+      <span class="price-delta" id="precio-delta"></span>
+      <p class="price-date" id="precio-fecha"></p>
+    </div>
+
+    <section>
+      <h2>Últimos 12 meses</h2>
+      <p class="section-note">Evolución del precio mensual</p>
+      <div class="chart-box">
+        <canvas id="chart-cobre" role="img" aria-label="Gráfico de evolución mensual del precio del cobre"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <div id="error" class="status error" style="display:none;"></div>
+
+  <footer>
+    <strong>Fuente:</strong> Alpha Vantage (Global Price of Copper).<br>
+    Dato de frecuencia mensual. Esta página consulta la API en vivo cada vez que se abre — no requiere que edites nada manualmente.
+  </footer>
+
+</div>
+
+<script>
+  /* ============================================================
+     ZONA DE CONFIGURACIÓN — pega tu clave gratuita de Alpha Vantage aquí.
+     La consigues en: alphavantage.co/support/#api-key
+     ============================================================ */
+  const API_KEY = "OT1RIG1J2BT9G3DY";
+  /* ============================================================ */
+
+  const url = `https://www.alphavantage.co/query?function=COPPER&interval=monthly&apikey=${API_KEY}`;
+
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.data || data.data.length === 0) {
+        throw new Error(data.Note || data.Information || "No se recibieron datos. Revisa tu clave.");
+      }
+
+      const serie = data.data.filter(d => d.value !== "." && d.value !== null).slice(0, 12).reverse();
+      const ultimo = serie[serie.length - 1];
+      const anterior = serie[serie.length - 2];
+
+      const precioActual = parseFloat(ultimo.value);
+      const precioAnterior = anterior ? parseFloat(anterior.value) : null;
+      const variacion = precioAnterior ? ((precioActual - precioAnterior) / precioAnterior * 100) : null;
+
+      document.getElementById('precio-actual').textContent =
+        "US$ " + precioActual.toLocaleString('es-CL', {maximumFractionDigits: 0});
+      document.getElementById('precio-fecha').textContent = "Dato de " + ultimo.date;
+
+      const deltaEl = document.getElementById('precio-delta');
+      if (variacion !== null) {
+        const signo = variacion >= 0 ? "▲" : "▼";
+        deltaEl.textContent = signo + " " + Math.abs(variacion).toFixed(1) + "% vs. mes anterior";
+        deltaEl.className = "price-delta " + (variacion >= 0 ? "up" : "down");
+      }
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('contenido').style.display = 'block';
+
+      new Chart(document.getElementById('chart-cobre'), {
+        type: 'line',
+        data: {
+          labels: serie.map(d => d.date.slice(0,7)),
+          datasets: [{
+            label: 'Precio del cobre (US$/ton)',
+            data: serie.map(d => parseFloat(d.value)),
+            borderColor: '#C1743A',
+            backgroundColor: 'rgba(193,116,58,0.1)',
+            fill: true,
+            tension: 0.25,
+            pointRadius: 3,
+            pointBackgroundColor: '#C1743A'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { maxRotation: 45, autoSkip: true, font: {size: 10} }, grid: { display: false } },
+            y: { ticks: { font: {size: 10} }, grid: { color: '#E4E0D6' } }
+          }
+        }
+      });
+    })
+    .catch(err => {
+      document.getElementById('loading').style.display = 'none';
+      const errEl = document.getElementById('error');
+      errEl.style.display = 'flex';
+      errEl.textContent = "No se pudo cargar el precio: " + err.message;
+    });
+</script>
+
+</body>
+</html>
